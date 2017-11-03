@@ -1,0 +1,178 @@
+#!/bin/bash
+
+source misc/utils.sh
+
+# Clear console before starting the script
+
+clear
+
+# Global/Config
+full_path=`pwd`
+misc_path="$full_path/misc"
+config_path="$full_path/config"
+config_file_name="default.conf"
+config_file_path="$config_path/$config_file_name"
+default_location="/var/www"
+logs_dir_name="logs"
+public_dir_name="public"
+sites_db_path="$misc_path/sites.db"
+
+# Comand line parameters
+
+domain="$1"
+location="$2"
+
+if [ $# -eq 1 ]
+then
+    location="$default_location"
+fi
+
+
+# Nginx parameters
+
+domain_placeholder="__DOMAIN__"
+sitedir_placeholder="__SITEDIR__"
+accesslog_placeholder="__ACCESSLOG__"
+errorlog_placeholder="__ERRORLOG__"
+nginx_dir="/etc/nginx"
+nginx_sites_available_dir="$nginx_dir/sites-available"
+nginx_sites_enabled_dir="$nginx_dir/sites-enabled"
+
+#Basic validation check
+
+if [ "$EUID" -ne 0 ]
+  then
+      _n "Please run as root" 0
+  exit
+fi
+
+if [ $# -lt 1 ] || [ $# -gt 2 ]
+then
+    _n "No correct paremeters provided." 0
+    _n "You need to provide correct parameters(site name and location) where location is optional." 0
+    _n "Usage: ./$(basename $0) sitename.com /var/www" 0
+    exit
+fi
+
+if [ ! -d "$location" ]
+then
+    _n "Not a valid site directory provided. Please enter valid location like /var/www" 0
+    exit
+fi
+
+if [ ! -f "$config_file_path" ]
+then
+    _n "The configuration file does not exist." 0
+    exit
+fi
+
+if [ ! -d "$nginx_sites_available_dir" ]
+then
+    _n "Nginx not installed... Please install nginx and continue with the script." 0
+    exit
+fi
+
+# Read the config file
+
+_n "Configuring Nginx site block for you..." 1
+
+
+# Initialize site variables
+
+site_dir="$location/$domain" #/var/www/site.ln
+site_public_dir="$site_dir/$public_dir_name" #/var/www/site.ln/public
+site_logs_dir="$site_dir/$logs_dir_name" #/var/www/site.ln/logs
+site_access_log="$site_logs_dir/access.log"
+site_error_log="$site_logs_dir/error.log"
+site_config_file_name="${domain%.*}.conf"
+site_sa_config_file="$nginx_sites_available_dir/$site_config_file_name"
+site_se_config_file="$nginx_sites_enabled_dir/$site_config_file_name"
+
+# Create the website block file
+_n "Checking if site already exist..." 1
+if [ -f $sites_sa_config_file ] || [ -d "$site_dir" ]
+then
+    _n "Site $domain already exist in the system."
+    _n "Do you want to overwrite it? (y/n)" 1
+    read answer
+    if echo "$answer" | grep -iq "^y" ;then
+        if [ -d "$site_dir" ]
+        then
+           rm -rf "$site_dir"
+        fi
+        if [ -f "$sites_sa_config_file" ]
+        then
+           rm "$sites_sa_config_file"
+        fi
+        if [ -f "$sites_se_config_file" ]
+        then
+           rm "$sites_se_config_file"
+        fi
+        _n "Old site removed successfully..."
+    else
+        _n "Ok, if you don't want do overwrite old site then we are done..." 1
+        exit
+    fi
+fi
+
+cp $config_file_path $site_sa_config_file
+
+if [ ! -f "$site_sa_config_file" ]
+then
+   _n "Can not copy the config file..." 0
+   exit
+fi
+
+sed -i -e 's|'"$domain_placeholder"'|'"$domain"'|g' $site_sa_config_file
+sed -i -e 's|'"$sitedir_placeholder"'|'"$site_public_dir"'|g' $site_sa_config_file
+sed -i -e 's|'"$accesslog_placeholder"'|'"$site_access_log"'|g' $site_sa_config_file
+sed -i -e 's|'"$errorlog_placeholder"'|'"$site_error_log"'|g' $site_sa_config_file
+
+_n "Success. Site block is now configured." 1
+
+rm "$site_se_config_file"
+ln -s $site_sa_config_file $site_se_config_file
+
+# Create the required files and directories
+
+mkdir -p $site_dir
+mkdir -p $site_public_dir
+mkdir -p $site_logs_dir
+
+if [ ! -d "$site_dir" ] || [ ! -d "$site_public_dir" ] || [ ! -d "$site_logs_dir" ]
+then
+    _n "Error creating the needed directories." 0
+    rm "$site_sa_config_file"
+    rm "$site_se_config_file"
+    exit
+fi
+
+cp "$config_path/index.html" $site_public_dir
+
+touch $site_access_log
+touch $site_error_log
+
+#Save the site in a local db file so we will be able to
+
+if [ ! -f "$sites_db_path" ]
+then
+   touch $sites_db_path
+fi
+echo "$domain - $site_dir" >> "$sites_db_path"
+
+_n "Generating the site directory..." 1
+_n "Done..."
+_n "Restarting the nginx server..."
+
+systemctl restart nginx
+
+_n "" 1
+_n "*********************************************************" 1
+_n "" 1
+_n "Your site details are as follows:" 1
+_n "- Domain: 	  $domain" 1
+_n "- Directory:  $site_public_dir" 1
+_n "- Error Log:  $site_error_log" 1
+_n "- Access Log: $site_access_log" 1
+_n "" 1
+_n "*********************************************************" 1
