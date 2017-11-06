@@ -2,6 +2,7 @@
 
 source misc/utils.sh
 
+_n ""
 # Clear console before starting the script
 
 clear
@@ -54,19 +55,19 @@ then
     exit
 fi
 
-if [ ! -d "$location" ]
+if [ ! -d "$location" ] || [ ! -x "$location" ]
 then
     _n "Not a valid site directory provided. Please enter valid location like /var/www" 0
     exit
 fi
 
-if [ ! -f "$config_file_path" ]
+if [ ! -e "$config_file_path" ]
 then
     _n "The configuration file does not exist." 0
     exit
 fi
 
-if [ ! -d "$nginx_sites_available_dir" ]
+if [ ! -d "$nginx_sites_available_dir" ] || [ ! -x "$location" ]
 then
     _n "Nginx not installed... Please install nginx and continue with the script." 0
     exit
@@ -90,7 +91,7 @@ site_se_config_file="$nginx_sites_enabled_dir/$site_config_file_name"
 
 # Create the website block file
 _n "Checking if site already exist..." 1
-if [ -f $sites_sa_config_file ] || [ -d "$site_dir" ]
+if [ -e $sites_sa_config_file ] || [ -d "$site_dir" ] && [ -x "$site_dir" ]
 then
     _n "Site $domain already exist in the system."
     _n "Do you want to overwrite it? (y/n)" 1
@@ -100,11 +101,11 @@ then
         then
            rm -rf "$site_dir"
         fi
-        if [ -f "$sites_sa_config_file" ]
+        if [ -e "$sites_sa_config_file" ]
         then
            rm "$sites_sa_config_file"
         fi
-        if [ -f "$sites_se_config_file" ]
+        if [ -L "$sites_se_config_file" ]
         then
            rm "$sites_se_config_file"
         fi
@@ -117,7 +118,7 @@ fi
 
 cp $config_file_path $site_sa_config_file
 
-if [ ! -f "$site_sa_config_file" ]
+if [ ! -e "$site_sa_config_file" ]
 then
    _n "Can not copy the config file..." 0
    exit
@@ -130,7 +131,6 @@ sed -i -e 's|'"$errorlog_placeholder"'|'"$site_error_log"'|g' $site_sa_config_fi
 
 _n "Success. Site block is now configured." 1
 
-rm "$site_se_config_file"
 ln -s $site_sa_config_file $site_se_config_file
 
 # Create the required files and directories
@@ -139,7 +139,7 @@ mkdir -p $site_dir
 mkdir -p $site_public_dir
 mkdir -p $site_logs_dir
 
-if [ ! -d "$site_dir" ] || [ ! -d "$site_public_dir" ] || [ ! -d "$site_logs_dir" ]
+if [ ! -d "$site_dir" ] || [ ! -x "$site_dir" ] || [ ! -d "$site_public_dir" ] || [ ! -x "$site_public_dir" ] || [ ! -d "$site_logs_dir" ] || [ ! -x "$site_logs_dir" ]
 then
     _n "Error creating the needed directories." 0
     rm "$site_sa_config_file"
@@ -154,11 +154,11 @@ touch $site_error_log
 
 #Save the site in a local db file so we will be able to
 
-if [ ! -f "$sites_db_path" ]
+if [ ! -e "$sites_db_path" ]
 then
    touch $sites_db_path
 fi
-echo "$domain - $site_dir" >> "$sites_db_path"
+echo "$domain $site_dir" >> "$sites_db_path"
 
 _n "Generating the site directory..." 1
 _n "Done..."
