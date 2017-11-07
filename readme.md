@@ -1,6 +1,6 @@
 # Sitemanager 
 
-This tool was done for personal usage but if someone finds it useful feel free to use/fork it or even submit pull request.
+This tool was created for personal usage but if someone finds it useful feel free to use/fork it or even submit pull request.
 
 ## Usage
 
